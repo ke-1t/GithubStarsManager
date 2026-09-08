@@ -379,6 +379,15 @@ npm run dev
 | `API_SECRET` | No | Bearer token for API authentication. If unset, auth is disabled. |
 | `ENCRYPTION_KEY` | No | AES-256 key for encrypting stored secrets. Auto-generated if unset. |
 | `PORT` | No | Server port (default: 3000) |
+| `CORS_ALLOWED_ORIGINS` | No | Comma-separated exact browser origins allowed to call the authenticated API/MCP surfaces. Local Vite origins are allowed by default; `*` is not accepted. |
+
+The Docker split and full-stack deployments serve the frontend and API from one
+origin, so they normally need no CORS setting. If a separately hosted frontend
+must connect to the backend, set `CORS_ALLOWED_ORIGINS` to its exact origin(s),
+for example `https://stars.example.com`. Packaged Electron/file clients may
+need an explicit `null` entry; add it only for that known workflow. Health
+checks remain credentialless and broadly readable, while non-browser MCP
+clients without an `Origin` header are unaffected.
 
 #### Connecting Frontend to Backend
 1. Open Settings panel in the app

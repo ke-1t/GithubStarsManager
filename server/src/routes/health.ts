@@ -1,8 +1,12 @@
 import { Router } from 'express';
+import { createPublicHealthCorsMiddleware } from '../middleware/cors.js';
 
 const router = Router();
+const publicHealthCors = createPublicHealthCorsMiddleware();
 
-router.get('/api/health', (_req, res) => {
+router.options('/api/health', publicHealthCors);
+
+router.get('/api/health', publicHealthCors, (_req, res) => {
   res.json({
     status: 'ok',
     version: '0.1.0',

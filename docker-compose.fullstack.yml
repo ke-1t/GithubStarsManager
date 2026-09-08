@@ -6,6 +6,7 @@ services:
     environment:
       API_SECRET: ${API_SECRET:?Set API_SECRET in .env before starting the full-stack deployment}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
     volumes:
       - backend-data:/app/data
     restart: unless-stopped

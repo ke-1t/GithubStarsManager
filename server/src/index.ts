@@ -1,5 +1,4 @@
 import express from 'express';
-import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import { config } from './config.js';
@@ -7,6 +6,7 @@ import { authMiddleware } from './middleware/auth.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { logger, morganLoggerStream } from './services/logger.js';
 import { mountStaticFrontend } from './services/staticFrontend.js';
+import { createCorsMiddleware } from './middleware/cors.js';
 import { getDb, closeDb } from './db/connection.js';
 import { runMigrations } from './db/migrations.js';
 import healthRouter from './routes/health.js';
@@ -26,37 +26,18 @@ export function createApp(): express.Express {
 
   // Keep default helmet (incl. CSP). MCP is a machine API; agents are not browser-CSP clients.
   app.use(helmet());
-  app.use(
-    cors({
-      exposedHeaders: [
-        'X-Log-Count',
-        'Mcp-Session-Id',
-        'mcp-session-id',
-        'Retry-After',
-        'retry-after-ms',
-        'X-RateLimit-Remaining',
-        'X-RateLimit-Reset',
-        'x-ratelimit-remaining',
-      ],
-      allowedHeaders: [
-        'Content-Type',
-        'Authorization',
-        'X-MCP-Token',
-        'Mcp-Session-Id',
-        'mcp-session-id',
-        'Last-Event-ID',
-      ],
-    })
-  );
   app.use(morgan('combined', { stream: morganLoggerStream }));
   app.use(express.json({ limit: '50mb' }));
 
-  // Auth middleware for all /api/* except /api/health
+  // Health is mounted first so its credentialless public probe remains broadly
+  // readable. Every other API/MCP surface uses the exact-origin policy below.
+  app.use(healthRouter);
+  app.use(createCorsMiddleware());
+
+  // Auth middleware for all /api/* (health has already been handled above).
   app.use('/api', authMiddleware);
 
   // Routes
-  app.use(healthRouter);
-
   // Wave 2: Data CRUD routes
   app.use(repositoriesRouter);
   app.use(releasesRouter);

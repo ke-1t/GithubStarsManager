@@ -22,6 +22,7 @@ services:
     environment:
       - API_SECRET=${API_SECRET:-}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-}
     volumes:
       - backend-data:/app/data
     restart: unless-stopped

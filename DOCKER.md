@@ -250,11 +250,15 @@ docker run -d -p 8080:80 \
 
 ## CORS Handling
 
-This Docker setup handles CORS in two ways:
+The backend owns CORS for `/api` and MCP routes. Browser origins are matched
+exactly against the local development origins and any values configured through
+`CORS_ALLOWED_ORIGINS`; the frontend proxy passes those headers through. The
+same-origin Docker deployments normally need no additional setting. The
+credentialless `/api/health` probe remains broadly readable, while static
+frontend responses do not add a wildcard CORS grant.
 
-1. **Nginx CORS Headers**: The Nginx configuration adds appropriate CORS headers to allow API calls to external services.
-
-2. **Client-Side Handling**: The application is designed to work with any AI or WebDAV service URL configured by the user, without requiring proxying.
+The application is designed to work with any AI or WebDAV service URL
+configured by the user, without requiring proxying.
 
 ## Stopping the Container
 
