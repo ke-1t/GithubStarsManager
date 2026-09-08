@@ -124,6 +124,19 @@ npm run deploy
 
 所有请求需要 `Authorization: Bearer <AUTH_TOKEN>` 头。
 
+## Origin and exposure contract
+
+この Worker は **authenticated public API** であり、private gateway では
+ありません。GithubStarsManager のブラウザアプリは packaged Electron の
+`null` origin、local Vite、利用者がホストする web deployment から直接呼び出す
+ため、`Access-Control-Allow-Origin: *` を意図的に返します。権限は明示的な
+Bearer token のみで、cookie/credentialed-browser flow は使用しません。
+`OPTIONS` は認証不要の CORS preflight に限り、`/upsert`・`/delete`・`/cleanup`
+の mutation route を含む全実 API は token を要求します。
+
+公開 endpoint の通信は Cloudflare の HTTPS に依存します。この source の契約
+は production deployment を実行・保証するものではありません。
+
 ## 本地开发
 
 ```bash

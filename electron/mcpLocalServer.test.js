@@ -410,3 +410,152 @@ test('Electron vector tools report worker_query_failed for a non-JSON worker res
     await new Promise((resolve) => workerUpstream.server.close(resolve));
   }
 });
+
+test('Electron vector tools do not expose embedding URLs or upstream error bodies', async () => {
+  const apiKey = 'gemini-api-key-sentinel';
+  let requestedUrl = '';
+  const embeddingUpstream = await listen((request, response) => {
+    requestedUrl = request.url || '';
+    response.writeHead(401, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ error: { message: `invalid key ${apiKey}` } }));
+  });
+  const mcpPortProbe = await listen((_request, response) => response.end());
+  await new Promise((resolve) => mcpPortProbe.server.close(resolve));
+
+  const state = {
+    config: { enabled: true, host: '127.0.0.1', port: mcpPortProbe.port, token: 'local-token' },
+    snapshot: {
+      repositories: [repo()],
+      customCategories: [],
+      releases: [],
+      vectorSearchConfig: {
+        enabled: true,
+        workerUrl: 'http://127.0.0.1:9',
+        authToken: 'worker-token',
+        searchTopK: 20,
+        embedding: {
+          apiType: 'gemini',
+          baseUrl: `http://127.0.0.1:${embeddingUpstream.port}`,
+          apiKey,
+          model: 'gemini-embedding-001',
+        },
+      },
+    },
+  };
+  const local = createMcpLocalServer(() => state);
+
+  try {
+    const started = await local.start();
+    const vector = await postJson(
+      started.url,
+      { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'gsm_vector_search', arguments: { query: 'retrieval' } } },
+      'local-token'
+    );
+    const vectorData = JSON.parse(vector.body.result.content[0].text);
+    assert.equal(vectorData.available, false);
+    assert.equal(vectorData.reason, 'embedding_failed: gemini 401');
+    assert.doesNotMatch(JSON.stringify(vectorData), new RegExp(apiKey));
+    assert.match(requestedUrl, /key=gemini-api-key-sentinel/);
+  } finally {
+    await local.stop();
+    await new Promise((resolve) => embeddingUpstream.server.close(resolve));
+  }
+});
+
+test('Electron MCP restricts browser origins while preserving local callers', async () => {
+  const mcpPortProbe = await listen((_request, response) => response.end());
+  await new Promise((resolve) => mcpPortProbe.server.close(resolve));
+
+  const state = {
+    config: { enabled: true, host: '127.0.0.1', port: mcpPortProbe.port, token: 'local-token' },
+    snapshot: {
+      repositories: [],
+      customCategories: [],
+      releases: [],
+      vectorSearchConfig: { enabled: false },
+    },
+  };
+  const local = createMcpLocalServer(() => state);
+  const started = await local.start();
+  const payload = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' });
+
+  try {
+    const production = await fetch(started.url, {
+      headers: { Origin: 'null', Authorization: 'Bearer local-token' },
+    });
+    assert.equal(production.status, 200);
+    assert.equal(production.headers.get('access-control-allow-origin'), 'null');
+    assert.match(production.headers.get('vary') || '', /Origin/);
+
+    const development = await fetch(started.url, {
+      method: 'POST',
+      headers: {
+        Origin: 'http://localhost:5173',
+        Authorization: 'Bearer local-token',
+        'Content-Type': 'application/json',
+      },
+      body: payload,
+    });
+    assert.equal(development.status, 200);
+    assert.equal(development.headers.get('access-control-allow-origin'), 'http://localhost:5173');
+
+    const noOrigin = await fetch(started.url, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer local-token',
+        'Content-Type': 'application/json',
+      },
+      body: payload,
+    });
+    assert.equal(noOrigin.status, 200);
+    assert.equal(noOrigin.headers.get('access-control-allow-origin'), null);
+
+    const unauthenticated = await fetch(started.url, {
+      method: 'POST',
+      headers: {
+        Origin: 'http://localhost:5173',
+        'Content-Type': 'application/json',
+      },
+      body: payload,
+    });
+    assert.equal(unauthenticated.status, 401);
+    assert.equal(unauthenticated.headers.get('access-control-allow-origin'), 'http://localhost:5173');
+
+    const malicious = await fetch(started.url, {
+      method: 'POST',
+      headers: {
+        Origin: 'https://evil.example',
+        Authorization: 'Bearer local-token',
+        'Content-Type': 'application/json',
+      },
+      body: payload,
+    });
+    assert.equal(malicious.status, 403);
+    assert.equal(malicious.headers.get('access-control-allow-origin'), null);
+
+    const allowedPreflight = await fetch(started.url, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'http://localhost:5173',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'Authorization, Content-Type',
+      },
+    });
+    assert.equal(allowedPreflight.status, 204);
+    assert.equal(allowedPreflight.headers.get('access-control-allow-origin'), 'http://localhost:5173');
+    assert.match(allowedPreflight.headers.get('access-control-allow-methods') || '', /POST/);
+
+    const rejectedPreflight = await fetch(started.url, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://evil.example',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'Authorization, Content-Type',
+      },
+    });
+    assert.equal(rejectedPreflight.status, 403);
+    assert.equal(rejectedPreflight.headers.get('access-control-allow-origin'), null);
+  } finally {
+    await local.stop();
+  }
+});

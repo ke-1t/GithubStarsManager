@@ -31,6 +31,10 @@ interface UpsertRequest {
 const QUERY_TOPK_LIMIT = 50;
 const QUERY_DEFAULT_TOPK = 20;
 
+// Origin contract: this is a public, bearer-authenticated API called directly
+// by browser clients from user-selected app deployments. Wildcard CORS is
+// intentional because the bearer token is the authority; this Worker never
+// enables cookie credentials or reflects arbitrary origins.
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -148,9 +152,8 @@ export default {
       }
 
       return jsonResponse({ error: 'Not Found' }, 404);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      return jsonResponse({ success: false, error: message }, 500);
+    } catch {
+      return jsonResponse({ success: false, error: 'Vectorize request failed' }, 500);
     }
   },
 };

@@ -20,6 +20,46 @@ const {
 const MCP_BATCH_LIMIT = 50;
 const VECTOR_CANDIDATE_LIMIT = 50;
 
+// The packaged renderer is loaded from file:// and is serialized as the null
+// origin by Chromium. Development uses Vite's fixed local origin. Native MCP
+// clients usually omit Origin and remain supported without a browser grant.
+const MCP_BROWSER_ORIGINS = new Set([
+  'null',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+]);
+
+const EMBEDDING_PROVIDER_LABELS = new Set([
+  'ollama',
+  'gemini',
+  'cohere',
+  'openai-compatible',
+  'openai',
+  'siliconflow',
+]);
+
+function safeEmbeddingProviderLabel(apiType) {
+  const label = String(apiType || 'openai');
+  return EMBEDDING_PROVIDER_LABELS.has(label) ? label : 'unknown';
+}
+
+class EmbeddingRequestError extends Error {
+  constructor(provider, status) {
+    super(`Embedding provider ${provider} returned HTTP ${status}`);
+    this.name = 'EmbeddingRequestError';
+    this.provider = provider;
+    this.status = status;
+  }
+}
+
+function safeEmbeddingFailureReason(apiType, error) {
+  const provider = safeEmbeddingProviderLabel(apiType);
+  if (error instanceof EmbeddingRequestError) {
+    return `embedding_failed: ${error.provider} ${error.status}`;
+  }
+  return `embedding_failed: ${provider}`;
+}
+
 function getVectorAvailability(snapshot) {
   const vs = snapshot?.vectorSearchConfig;
   if (!vs || !vs.enabled) {
@@ -117,10 +157,7 @@ async function embedQuery(text, emb) {
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    const errText = await res.text().catch(() => '');
-    throw new Error(
-      `Embedding API error ${res.status} (${apiType} ${url}): ${errText.slice(0, 200)}`
-    );
+    throw new EmbeddingRequestError(safeEmbeddingProviderLabel(apiType), res.status);
   }
   const data = await res.json();
 
@@ -168,7 +205,7 @@ async function runVectorSearch(query, args, snapshot) {
   } catch (err) {
     return {
       available: false,
-      reason: `embedding_failed: ${err instanceof Error ? err.message : String(err)}`,
+      reason: safeEmbeddingFailureReason(emb.apiType, err),
     };
   }
 
@@ -191,10 +228,9 @@ async function runVectorSearch(query, args, snapshot) {
     };
   }
   if (!res.ok) {
-    const errText = await res.text().catch(() => '');
     return {
       available: false,
-      reason: `worker_query_failed: ${res.status} ${errText.slice(0, 120)}`,
+      reason: `worker_query_failed: ${res.status}`,
     };
   }
 
@@ -617,6 +653,25 @@ function createMcpLocalServer(getState) {
     return provided && timingSafeEqualString(provided, token);
   }
 
+  function applyOriginPolicy(req, res) {
+    const origin = req.headers.origin;
+    if (!origin) return true;
+    if (!MCP_BROWSER_ORIGINS.has(origin)) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Origin not allowed', code: 'MCP_ORIGIN_NOT_ALLOWED' }));
+      return false;
+    }
+
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Content-Type, Authorization, X-MCP-Token, Mcp-Session-Id'
+    );
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, DELETE');
+    return true;
+  }
+
   async function start() {
     const state = getState();
     if (!state.config?.enabled) {
@@ -648,12 +703,7 @@ function createMcpLocalServer(getState) {
     const port = state.config?.port || 3927;
 
     server = http.createServer((req, res) => {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader(
-        'Access-Control-Allow-Headers',
-        'Content-Type, Authorization, X-MCP-Token, Mcp-Session-Id'
-      );
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, DELETE');
+      if (!applyOriginPolicy(req, res)) return;
       if (req.method === 'OPTIONS') {
         res.writeHead(204);
         res.end();

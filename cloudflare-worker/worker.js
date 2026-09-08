@@ -9,6 +9,9 @@
  * 方式二：Cloudflare Dashboard → Workers & Pages → 创建 → 粘贴本文件内容
  */
 
+// Public browser API contract: wildcard CORS is intentional because every
+// read/write route requires the explicit bearer token and cookie credentials
+// are never enabled.
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -119,9 +122,8 @@ export default {
       }
 
       return jsonResponse({ error: 'Not Found' }, 404);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return jsonResponse({ success: false, error: message }, 500);
+    } catch {
+      return jsonResponse({ success: false, error: 'Vectorize request failed' }, 500);
     }
   },
 };
