@@ -33,6 +33,34 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set image provenance
+        id: provenance
+        shell: bash
+        run: |
+          origin_url="$(git remote get-url origin)"
+          case "$origin_url" in
+            https://github.com/*)
+              source_url="${origin_url%.git}"
+              ;;
+            git@github.com:*)
+              source_url="https://github.com/${origin_url#git@github.com:}"
+              source_url="${source_url%.git}"
+              ;;
+            ssh://git@github.com/*)
+              source_url="https://github.com/${origin_url#ssh://git@github.com/}"
+              source_url="${source_url%.git}"
+              ;;
+            *)
+              echo "Unsupported origin remote for OCI source label" >&2
+              exit 1
+              ;;
+          esac
+          {
+            echo "source=${source_url}"
+            echo "revision=$(git rev-parse HEAD)"
+            echo "created=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Verify release tag matches client version
         if: github.ref_type == 'tag'
         run: node scripts/check-release-version.cjs "$GITHUB_REF_NAME"
@@ -76,6 +104,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            OCI_SOURCE=${{ steps.provenance.outputs.source }}
+            OCI_REVISION=${{ steps.provenance.outputs.revision }}
+            OCI_CREATED=${{ steps.provenance.outputs.created }}
           # Do not share the default `buildkit` scope with frontend or full-stack images.
           cache-from: type=gha,scope=github-stars-manager-backend-${{ github.ref_type }},timeout=5m
           cache-to: type=gha,scope=github-stars-manager-backend-${{ github.ref_type }},mode=max,timeout=5m,ignore-error=true

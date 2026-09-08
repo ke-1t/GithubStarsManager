@@ -28,7 +28,8 @@
     "dev:server": "cd server && npm run dev",
     "dev:all": "concurrently \"npm run dev\" \"npm run dev:server\"",
     "build:server": "cd server && npm run build",
-    "build:all": "npm run build && npm run build:server"
+    "build:all": "npm run build && npm run build:server",
+    "build:images": "bash scripts/build-images.sh"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.37",

@@ -49,6 +49,34 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set image provenance
+        id: provenance
+        shell: bash
+        run: |
+          origin_url="$(git remote get-url origin)"
+          case "$origin_url" in
+            https://github.com/*)
+              source_url="${origin_url%.git}"
+              ;;
+            git@github.com:*)
+              source_url="https://github.com/${origin_url#git@github.com:}"
+              source_url="${source_url%.git}"
+              ;;
+            ssh://git@github.com/*)
+              source_url="https://github.com/${origin_url#ssh://git@github.com/}"
+              source_url="${source_url%.git}"
+              ;;
+            *)
+              echo "Unsupported origin remote for OCI source label" >&2
+              exit 1
+              ;;
+          esac
+          {
+            echo "source=${source_url}"
+            echo "revision=$(git rev-parse HEAD)"
+            echo "created=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
 
@@ -62,6 +90,10 @@ jobs:
           file: ./Dockerfile.fullstack
           platforms: linux/amd64,linux/arm64
           push: false
+          build-args: |
+            OCI_SOURCE=${{ steps.provenance.outputs.source }}
+            OCI_REVISION=${{ steps.provenance.outputs.revision }}
+            OCI_CREATED=${{ steps.provenance.outputs.created }}
           # Fork PRs may fall back to the default branch's publish cache, so a
           # cold fork PR reuses the latest main build layers instead of timing
           # out on a from-scratch multi-arch build.
@@ -87,6 +119,34 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+
+      - name: Set image provenance
+        id: provenance
+        shell: bash
+        run: |
+          origin_url="$(git remote get-url origin)"
+          case "$origin_url" in
+            https://github.com/*)
+              source_url="${origin_url%.git}"
+              ;;
+            git@github.com:*)
+              source_url="https://github.com/${origin_url#git@github.com:}"
+              source_url="${source_url%.git}"
+              ;;
+            ssh://git@github.com/*)
+              source_url="https://github.com/${origin_url#ssh://git@github.com/}"
+              source_url="${source_url%.git}"
+              ;;
+            *)
+              echo "Unsupported origin remote for OCI source label" >&2
+              exit 1
+              ;;
+          esac
+          {
+            echo "source=${source_url}"
+            echo "revision=$(git rev-parse HEAD)"
+            echo "created=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Verify release tag matches client version
         if: github.ref_type == 'tag'
@@ -130,6 +190,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            OCI_SOURCE=${{ steps.provenance.outputs.source }}
+            OCI_REVISION=${{ steps.provenance.outputs.revision }}
+            OCI_CREATED=${{ steps.provenance.outputs.created }}
           # Keep this cache independent from frontend and server image builds.
           cache-from: type=gha,scope=github-stars-manager-fullstack-publish-${{ github.ref_type }},timeout=5m
           cache-to: type=gha,scope=github-stars-manager-fullstack-publish-${{ github.ref_type }},mode=max,timeout=5m,ignore-error=true

@@ -20,9 +20,10 @@ RUN npm run build
 # Production stage
 FROM nginx:alpine
 
-ARG OCI_SOURCE="unknown"
-ARG OCI_REVISION="unknown"
-ARG OCI_CREATED="unknown"
+ARG OCI_SOURCE
+ARG OCI_REVISION
+ARG OCI_CREATED
+RUN test -n "$OCI_SOURCE" && test -n "$OCI_REVISION" && test -n "$OCI_CREATED"
 LABEL org.opencontainers.image.source=$OCI_SOURCE \
       org.opencontainers.image.revision=$OCI_REVISION \
       org.opencontainers.image.created=$OCI_CREATED
