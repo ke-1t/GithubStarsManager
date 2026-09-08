@@ -201,27 +201,18 @@ Then `docker-compose up -d` reads them automatically.
 
 ### Using Docker Compose (local build)
 
-**Option A — Edit `docker-compose.yml` directly:**
-
-Comment out the `image:` line and uncomment `build: ./server`, then:
+The repository Dockerfiles require OCI source, revision, and creation-time
+metadata. Use the canonical local build command so those values are derived
+from the clean checkout automatically:
 
 ```bash
-docker-compose up -d --build
+npm run build:images
 ```
 
-**Option B — Use an override file (no editing needed):**
-
-Create `docker-compose.override.yml` in the project root:
-
-```yaml
-services:
-  backend:
-    build: ./server
-```
-
-Then run `docker-compose up -d --build`. The override file takes precedence automatically. To switch back to GHCR images, simply delete the override file.
-
-> **Note:** Do NOT commit the override file to git — it would force local builds for all users.
+This builds and verifies the local backend and frontend images tagged with the
+current short Git revision. Avoid starting a Compose `--build` override for
+these Dockerfiles unless it supplies the same three build arguments; a direct
+build without provenance is intentionally rejected.
 
 ### Using Docker directly (frontend only)
 
@@ -245,13 +236,16 @@ docker run -d -p 8080:80 \
 > reachable address (e.g. `host.docker.internal:3000` on Docker Desktop, or the backend
 > container's IP/host on a shared network).
 
-To build the image locally instead (uses the repository `Dockerfile`):
+To build the image locally instead (uses the repository `Dockerfile`), use the
+canonical build command and run the verified frontend tag:
 
 ```bash
-docker build -t github-stars-manager .
+npm run build:images
+LOCAL_IMAGE_TAG="$(git rev-parse --short=12 HEAD)"
 docker run -d -p 8080:80 \
   -e BACKEND_HOST=host.docker.internal:3000 \
-  --name github-stars-manager github-stars-manager
+  --name github-stars-manager \
+  "githubstarsmanager-canonical-frontend:${LOCAL_IMAGE_TAG}"
 ```
 
 ## CORS Handling
