@@ -20,6 +20,13 @@ RUN npm run build
 # Production stage
 FROM nginx:alpine
 
+ARG OCI_SOURCE="unknown"
+ARG OCI_REVISION="unknown"
+ARG OCI_CREATED="unknown"
+LABEL org.opencontainers.image.source=$OCI_SOURCE \
+      org.opencontainers.image.revision=$OCI_REVISION \
+      org.opencontainers.image.created=$OCI_CREATED
+
 # Remove default nginx config that conflicts with ours
 RUN rm -f /etc/nginx/conf.d/default.conf
 

@@ -6,6 +6,14 @@ COPY . .
 RUN npm run build && npm prune --omit=dev
 
 FROM node:22-alpine
+
+ARG OCI_SOURCE="unknown"
+ARG OCI_REVISION="unknown"
+ARG OCI_CREATED="unknown"
+LABEL org.opencontainers.image.source=$OCI_SOURCE \
+      org.opencontainers.image.revision=$OCI_REVISION \
+      org.opencontainers.image.created=$OCI_CREATED
+
 WORKDIR /app
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/node_modules ./node_modules
