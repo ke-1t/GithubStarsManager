@@ -248,6 +248,39 @@ async function fetchWithTimeout(
   }
 }
 
+const EMBEDDING_PROVIDER_LABELS = new Set([
+  'ollama',
+  'gemini',
+  'cohere',
+  'openai-compatible',
+  'openai',
+  'siliconflow',
+]);
+
+function safeEmbeddingProviderLabel(apiType: string): string {
+  return EMBEDDING_PROVIDER_LABELS.has(apiType) ? apiType : 'unknown';
+}
+
+class EmbeddingRequestError extends Error {
+  readonly provider: string;
+  readonly status: number;
+
+  constructor(provider: string, status: number) {
+    super(`Embedding provider ${provider} returned HTTP ${status}`);
+    this.name = 'EmbeddingRequestError';
+    this.provider = provider;
+    this.status = status;
+  }
+}
+
+function safeEmbeddingFailureReason(apiType: string, error: unknown): string {
+  const provider = safeEmbeddingProviderLabel(apiType);
+  if (error instanceof EmbeddingRequestError) {
+    return `embedding_failed: ${error.provider} ${error.status}`;
+  }
+  return `embedding_failed: ${provider}`;
+}
+
 /**
  * Match app EmbeddingClient URL rules in vectorSearchService.ts:
  * - openai / siliconflow: `${baseUrl}/v1/embeddings` (baseUrl usually host without /v1)
@@ -314,8 +347,7 @@ async function embedQuery(
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Embedding API error ${res.status} (${apiType} ${url}): ${text.slice(0, 200)}`);
+    throw new EmbeddingRequestError(safeEmbeddingProviderLabel(apiType), res.status);
   }
   const data = (await res.json()) as Record<string, unknown>;
 
@@ -399,10 +431,11 @@ export async function vectorSearch(
   try {
     vector = await embedQuery([query], emb);
   } catch (err) {
+    const reason = safeEmbeddingFailureReason(String(emb.api_type || 'openai'), err);
     logger.warn('mcp.vector', 'Embedding failed', {
-      error: err instanceof Error ? err.message : String(err),
+      reason,
     });
-    return { available: false, reason: `embedding_failed: ${err instanceof Error ? err.message : String(err)}` };
+    return { available: false, reason };
   }
 
   const workerUrl = String(vs.worker_url).replace(/\/$/, '');
@@ -425,8 +458,7 @@ export async function vectorSearch(
     };
   }
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    return { available: false, reason: `worker_query_failed: ${res.status} ${text.slice(0, 120)}` };
+    return { available: false, reason: `worker_query_failed: ${res.status}` };
   }
   let data: {
     matches?: Array<{ id: string; score: number; metadata?: Record<string, unknown> }>;

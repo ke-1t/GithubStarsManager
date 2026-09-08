@@ -55,6 +55,7 @@ function configureDb(options: {
   repos?: Record<string, unknown>[];
   releases?: Record<string, unknown>[];
   vectorEnabled?: boolean;
+  embedding?: Record<string, unknown>;
 } = {}) {
   const repos = options.repos ?? [repoRow()];
   const releases = options.releases ?? [];
@@ -70,6 +71,7 @@ function configureDb(options: {
     model: 'bge-m3',
     api_key_encrypted: '',
     base_url: 'http://127.0.0.1:11434',
+    ...options.embedding,
   };
 
   getDbMock.mockReturnValue({
@@ -227,6 +229,45 @@ describe('MCP provider discovery', () => {
     const result = await provider.vectorSearch('retrieval', {});
     expect(result).toMatchObject({ available: false });
     expect((result as { reason: string }).reason).toBe('worker_query_failed');
+  });
+
+  it('does not expose embedding URLs or upstream error bodies', async () => {
+    const apiKey = 'gemini-api-key-sentinel';
+    configureDb({
+      embedding: {
+        api_type: 'gemini',
+        model: 'gemini-embedding-001',
+        api_key_encrypted: apiKey,
+        base_url: 'http://embedding.example',
+      },
+    });
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: { message: `invalid key ${apiKey}` } }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await provider.vectorSearch('retrieval', {});
+    expect(result).toMatchObject({ available: false, reason: 'embedding_failed: gemini 401' });
+    expect(JSON.stringify(result)).not.toContain(apiKey);
+    expect(String(fetchMock.mock.calls[0][0])).toContain(`key=${apiKey}`);
+  });
+
+  it('does not expose worker error bodies', async () => {
+    const workerToken = 'worker-token-sentinel';
+    configureDb();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ embeddings: [[0.1, 0.2]] }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: `invalid token ${workerToken}` }), { status: 401 })
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await provider.vectorSearch('retrieval', {});
+    expect(result).toMatchObject({ available: false, reason: 'worker_query_failed: 401' });
+    expect(JSON.stringify(result)).not.toContain(workerToken);
   });
 
   it('maps a worker timeout abort to worker_query_failed instead of throwing', async () => {

@@ -25,6 +25,7 @@ ARG OCI_SOURCE
 ARG OCI_REVISION
 ARG OCI_CREATED
 ENV NODE_ENV=production \
+    HOST=0.0.0.0 \
     STATIC_DIR=/app/public
 WORKDIR /app
 COPY --from=server-build --chown=node:node /app/dist ./dist

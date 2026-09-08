@@ -1,13 +1,45 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import net from 'node:net';
 import path from 'node:path';
 
 interface Config {
+  host: string;
   port: number;
   apiSecret: string | null;
   encryptionKey: string;
   dbPath: string;
   nodeEnv: string;
+}
+
+export const DEFAULT_LISTEN_HOST = '127.0.0.1';
+
+/** Use loopback unless the operator explicitly selects another bind address. */
+export function normalizeListenHost(rawHost: string | undefined): string {
+  const host = rawHost?.trim();
+  return host || DEFAULT_LISTEN_HOST;
+}
+
+/** Return true only for names and addresses that are unambiguously loopback. */
+export function isLoopbackHost(host: string): boolean {
+  const normalized = host.trim().toLowerCase().replace(/^\[(.*)\]$/, '$1').replace(/\.$/, '');
+  if (normalized === 'localhost' || normalized.endsWith('.localhost') || normalized === '::1') {
+    return true;
+  }
+
+  if (net.isIP(normalized) === 4) {
+    const firstOctet = Number(normalized.split('.')[0]);
+    return firstOctet === 127;
+  }
+
+  return false;
+}
+
+/** External binds must never silently start an unauthenticated API server. */
+export function assertSafeListenConfig(host: string, apiSecret: string | null): void {
+  if (!isLoopbackHost(host) && !apiSecret?.trim()) {
+    throw new Error('API_SECRET is required when HOST is not loopback');
+  }
 }
 
 /** Resolve the data directory path, creating it if it doesn't exist. */
@@ -76,11 +108,15 @@ function resolveEncryptionKey(dataDir: string): string {
 
 /** Load all server configuration from environment variables and defaults. */
 function loadConfig(): Config {
+  const host = normalizeListenHost(process.env.HOST);
+  const apiSecret = process.env.API_SECRET?.trim() || null;
+  assertSafeListenConfig(host, apiSecret);
   const dataDir = resolveDataDir();
 
   return {
+    host,
     port: parseInt(process.env.PORT || '3000', 10),
-    apiSecret: process.env.API_SECRET || null,
+    apiSecret,
     encryptionKey: resolveEncryptionKey(dataDir),
     dbPath: process.env.DB_PATH || path.join(dataDir, 'data.db'),
     nodeEnv: process.env.NODE_ENV || 'development',

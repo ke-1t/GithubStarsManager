@@ -306,11 +306,12 @@ https://github.com/AmintaCCCP/GithubStarsManager/releases
 
 ### 🐳 Run With Docker
 
-Pre-built backend **and frontend** images are available on GHCR — no local build required. Existing Docker users should continue to use the unchanged two-service Compose deployment:
+Pre-built backend **and frontend** images are available on GHCR — no local build required. The two-service Compose deployment remains supported; create a `.env` with `API_SECRET` before starting because the backend container uses a non-loopback bind:
 
 ```bash
 docker pull ghcr.io/amintacccp/github-stars-manager-server:latest
 docker pull ghcr.io/amintacccp/github-stars-manager-frontend:latest
+# .env: API_SECRET=replace-with-a-long-random-secret
 docker-compose up -d
 ```
 
@@ -321,7 +322,7 @@ API_SECRET=replace-with-a-long-random-secret
 docker compose -f docker-compose.fullstack.yml up -d
 ```
 
-This new option does not replace or modify the existing frontend image, backend image, `docker-compose.yml`, or desktop clients. The canonical role names are `-frontend`, `-backend`, and `-fullstack`; the existing `-server` backend image remains a compatibility alias for current deployments. Formal `vX.Y.Z` Docker tags must match the root `package.json` client version, while `latest` and `sha-*` remain development and traceability tags. See [DOCKER.md](DOCKER.md#optional-single-container-full-stack-deployment) for full-stack deployment, migration, backup, and rollback instructions.
+This new option does not replace the existing frontend image, backend image, or desktop clients. The canonical role names are `-frontend`, `-backend`, and `-fullstack`; the existing `-server` backend image remains a compatibility alias for current deployments. Formal `vX.Y.Z` Docker tags must match the root `package.json` client version, while `latest` and `sha-*` remain development and traceability tags. See [DOCKER.md](DOCKER.md#optional-single-container-full-stack-deployment) for full-stack deployment, migration, backup, and rollback instructions.
 
 > [!NOTE]
 > If the package is private, run `docker login ghcr.io` first (use a [PAT](https://github.com/settings/tokens) with `read:packages` scope).
@@ -337,6 +338,7 @@ The app works fully without a backend (pure frontend, localStorage). An optional
 
 #### Quick Start (Docker — recommended)
 ```bash
+# Create a `.env` file with API_SECRET before starting.
 docker-compose up -d
 ```
 Frontend on port 8080, backend on port 3000. Data is persisted in a Docker volume. This existing split deployment remains the recommended option when you need to version, operate, or scale the frontend and backend independently; the optional single-container alternative is documented in [DOCKER.md](DOCKER.md#optional-single-container-full-stack-deployment).
@@ -351,16 +353,20 @@ FRONTEND_IMAGE_TAG=0.7.9  # pin frontend image version (default: latest)
 
 #### Backend only (docker run)
 ```bash
-# Basic — no auth, port 3000
+# API_SECRET is required for the container bind. Use a loopback host mapping
+# for a local-only backend, or put it behind a private network/reverse proxy.
 docker run -d --name github-stars-backend \
   -v github-stars-data:/app/data \
-  -p 3000:3000 \
+  -p 127.0.0.1:3000:3000 \
+  -e HOST=0.0.0.0 \
+  -e API_SECRET="your-secret" \
   ghcr.io/amintacccp/github-stars-manager-server:latest
 
 # With custom secret and encryption key
 docker run -d --name github-stars-backend \
   -v github-stars-data:/app/data \
   -p 3000:3000 \
+  -e HOST=0.0.0.0 \
   -e API_SECRET="your-secret" \
   -e ENCRYPTION_KEY="your-key" \
   ghcr.io/amintacccp/github-stars-manager-server:latest
@@ -376,9 +382,10 @@ npm run dev
 #### Environment Variables
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `API_SECRET` | No | Bearer token for API authentication. If unset, auth is disabled. |
+| `API_SECRET` | Required when `HOST` is non-loopback | Bearer token for API authentication. Docker Compose requires it. |
 | `ENCRYPTION_KEY` | No | AES-256 key for encrypting stored secrets. Auto-generated if unset. |
 | `PORT` | No | Server port (default: 3000) |
+| `HOST` | No | Bind address; native default is `127.0.0.1`, while official Docker images use `0.0.0.0` for container networking. |
 | `CORS_ALLOWED_ORIGINS` | No | Comma-separated exact browser origins allowed to call the authenticated API/MCP surfaces. Local Vite origins are allowed by default; `*` is not accepted. |
 
 The Docker split and full-stack deployments serve the frontend and API from one
@@ -388,6 +395,11 @@ for example `https://stars.example.com`. Packaged Electron/file clients may
 need an explicit `null` entry; add it only for that known workflow. Health
 checks remain credentialless and broadly readable, while non-browser MCP
 clients without an `Origin` header are unaffected.
+
+Native backend execution defaults to loopback. An explicit non-loopback `HOST`
+requires `API_SECRET` and the process fails closed otherwise. Official Docker
+images set the container-internal bind to `0.0.0.0`; publish them only to a
+loopback/private network or put them behind a TLS-terminating reverse proxy.
 
 #### Connecting Frontend to Backend
 1. Open Settings panel in the app

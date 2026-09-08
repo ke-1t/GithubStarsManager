@@ -1,6 +1,6 @@
 # Docker Deployment
 
-This application can be deployed using Docker with minimal configuration. Existing deployments use separate frontend and backend containers; an additional opt-in full-stack image is available for users who prefer a single container. The existing images and `docker-compose.yml` remain supported and unchanged.
+This application can be deployed using Docker with minimal configuration. Existing deployments use separate frontend and backend containers; an additional opt-in full-stack image is available for users who prefer a single container. The existing image names and split deployment remain supported; backend startup now requires an API secret for its container-network bind.
 
 ## Prerequisites
 
@@ -9,9 +9,13 @@ This application can be deployed using Docker with minimal configuration. Existi
 
 ## Quick Start (Using Pre-built Images from GHCR)
 
-The fastest way to get started — no build required:
+The fastest way to get started — no build required. Create a `.env` file with
+the backend secret first:
 
 ```bash
+# .env
+API_SECRET=replace-with-a-long-random-secret
+
 # Using Docker Compose (pulls images automatically)
 docker-compose up -d
 
@@ -38,7 +42,7 @@ Published images:
 - Full stack (optional): `ghcr.io/amintacccp/github-stars-manager-fullstack`
 - Backend legacy compatibility alias: `ghcr.io/amintacccp/github-stars-manager-server`
 
-The `-frontend`, `-backend`, and `-fullstack` names identify the image role consistently. The existing `-server` backend alias continues to receive the same tags so current `docker-compose.yml` and direct `docker run` deployments remain unchanged.
+The `-frontend`, `-backend`, and `-fullstack` names identify the image role consistently. The existing `-server` backend alias continues to receive the same tags so current image references remain usable. Docker Compose backend startup now requires an API secret because the backend container uses a non-loopback bind.
 
 ## Optional Single-Container Full-Stack Deployment
 
@@ -51,7 +55,7 @@ API_SECRET=replace-with-a-long-random-secret
 # Optional: set this to keep a chosen encryption key rather than generating one in the data volume.
 # ENCRYPTION_KEY=replace-with-your-encryption-key
 
-# This leaves docker-compose.yml unchanged for existing deployments.
+# The split and full-stack files share the same explicit auth/bind contract.
 docker compose -f docker-compose.fullstack.yml up -d
 
 # Open the application at http://localhost:8080
@@ -85,7 +89,14 @@ IMAGE_TAG=0.7.8
 
 ### Migrate an Existing Docker Compose Deployment
 
-Migration is optional. Existing frontend-plus-backend deployments continue to work and require no action. If the current backend has an `API_SECRET`, preserve the exact value in the full-stack `.env`; this keeps current browser, API, and MCP clients authenticated without reconfiguration. If the existing backend has no `API_SECRET`, generate a strong new value in the full-stack `.env` and configure every direct API and MCP client with it after cutover; the full-stack Compose file intentionally does not start unauthenticated. If the existing service explicitly sets `ENCRYPTION_KEY`, copy the **same value** into the full-stack `.env` as well. Replace `<existing-backend-data-volume>` with the volume name returned by `docker volume ls`; when Compose is run from this repository with its default project name, it normally ends in `_backend-data`.
+Migration is optional for an already-running deployment, which this task does
+not mutate. On the next split-Compose recreation, provide an `API_SECRET`; if
+the current backend has none, generate a strong new value and configure every
+direct API and MCP client after cutover. For full-stack migration, preserve the
+exact existing `API_SECRET` and, when explicitly set, the same `ENCRYPTION_KEY`.
+Replace `<existing-backend-data-volume>` with the volume name returned by
+`docker volume ls`; when Compose is run from this repository with its default
+project name, it normally ends in `_backend-data`.
 
 ```bash
 # Stop all SQLite writers without deleting the named data volume.
@@ -141,18 +152,22 @@ FRONTEND_IMAGE_TAG=0.7.8
 The backend image is published to GHCR and can be run standalone. New standalone deployments should use the canonical `-backend` image. The legacy `-server` image remains published with identical tags exclusively for existing `docker-compose.yml` and direct deployments, so no current user must change an image reference.
 
 ```bash
-# Basic — no auth, port 3000, data persisted in volume
+# API_SECRET is required for the container's non-loopback bind. Publish to
+# loopback for a local-only client, or use a private network/reverse proxy.
 docker run -d \
   --name github-stars-backend \
   -v github-stars-data:/app/data \
-  -p 3000:3000 \
+  -p 127.0.0.1:3000:3000 \
+  -e HOST=0.0.0.0 \
+  -e API_SECRET="your-secret-here" \
   ghcr.io/amintacccp/github-stars-manager-backend:latest
 
 # With custom API secret and encryption key
 docker run -d \
   --name github-stars-backend \
   -v github-stars-data:/app/data \
-  -p 3000:3000 \
+  -p 127.0.0.1:3000:3000 \
+  -e HOST=0.0.0.0 \
   -e API_SECRET="your-secret-here" \
   -e ENCRYPTION_KEY="your-encryption-key" \
   ghcr.io/amintacccp/github-stars-manager-backend:latest
@@ -162,6 +177,7 @@ docker run -d \
   --name github-stars-backend \
   -v github-stars-data:/app/data \
   -p 8080:3000 \
+  -e HOST=0.0.0.0 \
   -e API_SECRET="your-secret-here" \
   ghcr.io/amintacccp/github-stars-manager-backend:latest
 ```
@@ -170,12 +186,20 @@ docker run -d \
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `API_SECRET` | Optional for standalone backend | `null` (auth disabled) | Bearer token for API authentication. It is required by `docker-compose.fullstack.yml` so the new single-container web service cannot start unauthenticated. |
+| `API_SECRET` | Required when `HOST` is non-loopback | Unset on native loopback development | Bearer token for API authentication. Both Docker Compose deployments require it. |
 | `ENCRYPTION_KEY` | No | Auto-generated (saved to `data/.encryption-key`) | AES-256 key for encrypting stored secrets. Accepts any format — 64-char hex, shorter hex, base64, or plain text (all normalized via SHA-256) |
 | `PORT` | No | `3000` | Server listening port |
+| `HOST` | No | `127.0.0.1` for native execution; `0.0.0.0` in official Docker images | Bind address. A non-loopback bind without `API_SECRET` fails closed. |
 | `DB_PATH` | No | `data/data.db` | Path to SQLite database file |
 
 > **Note:** The data volume (`/app/data`) stores both the database and the auto-generated encryption key. Always mount it to persist data across container restarts.
+
+Native `npm start`/`npm run dev` binds to loopback by default. Selecting a
+non-loopback `HOST` is an explicit external-bind opt-in and requires
+`API_SECRET`; the process refuses to start without it. Direct public plaintext
+exposure is not the TLS boundary: terminate HTTPS at a reverse proxy, keep the
+backend on a private network, and list only exact browser origins in
+`CORS_ALLOWED_ORIGINS`. MCP continues to use its separate token.
 
 ## Full Stack with Docker Compose
 
