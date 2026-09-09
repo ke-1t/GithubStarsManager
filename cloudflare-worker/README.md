@@ -8,6 +8,14 @@
 - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/) (`npm install -g wrangler`)
 - 已登录 Wrangler (`wrangler login`)
 
+## Deployment authority
+
+`src/index.ts` is the canonical Worker implementation and the only entrypoint
+used by the repository's Wrangler deployment path (`npm run deploy`).
+`worker.js` is retained as a standalone Cloudflare Dashboard paste fallback;
+it is not the production deployment authority and must stay behaviorally aligned
+with `src/index.ts`.
+
 ## 首次部署
 
 ### 1. 创建 Vectorize 索引
@@ -107,8 +115,8 @@ npm run deploy
 
 | 文件 | 说明 |
 |------|------|
-| `src/index.ts` | Worker 源码（TypeScript，CLI 部署使用） |
-| `worker.js` | Worker 代码（纯 JS，备用） |
+| `src/index.ts` | Worker canonical source（TypeScript、Wrangler deploy path） |
+| `worker.js` | Standalone pure-JS Dashboard fallback（not the production authority） |
 | `wrangler.toml` | Wrangler 部署配置 |
 | `package.json` | 依赖声明 |
 
