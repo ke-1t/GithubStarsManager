@@ -104,7 +104,7 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-legacy": "^7.2.1",
     "@vitejs/plugin-react": "^5.1.2",
-    "autoprefixer": "^10.4.18",
+    "autoprefixer": "^10.5.5",
     "concurrently": "^8.2.0",
     "eslint": "^9.9.1",
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
@@ -121,6 +121,8 @@
     "xml2js": "^0.6.2"
   },
   "overrides": {
-    "decode-uri-component": "^0.5.0"
+    "decode-uri-component": "^0.5.0",
+    "js-yaml": "4.3.2",
+    "postcss-selector-parser": "6.1.3"
   }
 }
