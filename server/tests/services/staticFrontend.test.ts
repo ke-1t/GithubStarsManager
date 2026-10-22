@@ -1,4 +1,5 @@
 import express from 'express';
+import helmet from 'helmet';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -26,9 +27,27 @@ afterEach(() => {
 });
 
 describe('mountStaticFrontend', () => {
+  it('allows configured frontend connections while retaining the API security policy', async () => {
+    const app = express();
+    app.use(helmet());
+    app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+    mountStaticFrontend(app, createStaticDirectory(), 'http://127.0.0.1:11434,https://vector.example');
+
+    const page = await request(app).get('/').expect(200);
+    expect(page.headers['content-security-policy']).toContain("connect-src 'self' http://127.0.0.1:11434 https://vector.example");
+    expect(page.headers['content-security-policy']).toContain("img-src 'self' data: https://avatars.githubusercontent.com");
+    expect(page.headers['content-security-policy']).toContain("script-src 'self'");
+    const api = await request(app).get('/api/health').expect(200);
+    expect(api.headers['content-security-policy']).not.toContain('https://vector.example');
+  });
+
   it('does not change a standalone backend when STATIC_DIR is absent', () => {
     const app = express();
     expect(mountStaticFrontend(app, undefined)).toBe(false);
+  });
+
+  it.each(['https://example.com/path', 'https://user:password@example.com', '*'])('rejects a non-origin CSP source: %s', (source) => {
+    expect(() => mountStaticFrontend(express(), createStaticDirectory(), source)).toThrow();
   });
 
   it('serves assets and SPA deep links without intercepting backend paths', async () => {
@@ -44,6 +63,7 @@ describe('mountStaticFrontend', () => {
     await request(app).get('/mcp').expect(404);
     await request(app).get('/sse').expect(404);
     await request(app).get('/messages').expect(404);
+    await request(app).get('/.well-known/oauth-protected-resource').expect(404);
   });
 
   it('does not mount an incomplete static directory', () => {
