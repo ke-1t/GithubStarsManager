@@ -8,6 +8,7 @@ const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsm-mcp-'));
 process.env.DB_PATH = path.join(tmpDir, 'test.db');
 process.env.ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 process.env.API_SECRET = 'test-api-secret';
+process.env.MCP_RESOURCE_URL = 'http://127.0.0.1:8082/mcp';
 
 async function canOpenSqlite(): Promise<boolean> {
   try {
@@ -87,6 +88,15 @@ describeIfDb('MCP admin + transport auth', () => {
   it('GET /api/mcp/status requires API secret', async () => {
     const res = await request(app).get('/api/mcp/status');
     expect(res.status).toBe(401);
+  });
+
+  it('preserves token-only discovery metadata without requiring or minting credentials', async () => {
+    for (const url of ['/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/mcp']) {
+      const res = await request(app).get(url);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ resource: 'http://127.0.0.1:8082/mcp', authorization_servers: [] });
+    }
+    expect(getMcpTokenPlain()).toBeNull();
   });
 
   it('returns disabled status without minting token', async () => {

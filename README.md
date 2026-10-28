@@ -380,6 +380,8 @@ npm run dev
 ```
 
 #### Environment Variables
+
+When serving a built UI with `STATIC_DIR`, set `STATIC_CONNECT_ORIGINS` to a comma-separated list of exact HTTP(S) origins used by browser clients (for example, the configured embedding service and vector worker). Include GitHub API and raw-content origins if browser routing or update checks are needed. This allowlist applies only to static frontend responses; API security headers remain unchanged. GitHub avatars are allowed for repository and account images.
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `API_SECRET` | Required when `HOST` is non-loopback | Bearer token for API authentication. Docker Compose requires it. |
@@ -387,6 +389,7 @@ npm run dev
 | `PORT` | No | Server port (default: 3000) |
 | `HOST` | No | Bind address; native default is `127.0.0.1`, while official Docker images use `0.0.0.0` for container networking. |
 | `CORS_ALLOWED_ORIGINS` | No | Comma-separated exact browser origins allowed to call the authenticated API/MCP surfaces. Local Vite origins are allowed by default; `*` is not accepted. |
+| `MCP_RESOURCE_URL` | No | Public HTTP(S) `/mcp` URL for token-only resource discovery metadata. Set it when the frontend proxy does not provide the existing metadata responses. No OAuth server or token is created. |
 
 The Docker split and full-stack deployments serve the frontend and API from one
 origin, so they normally need no CORS setting. If a separately hosted frontend

@@ -108,7 +108,19 @@ async function handleSseMessage(req: Request, res: Response): Promise<void> {
  * Stateless Streamable HTTP is POST-only (SDK guidance): GET/DELETE return 405 so clients
  * do not open orphan SSE streams on /mcp. Use /mcp/sse for legacy SSE.
  */
-export function mountMcpRoutes(app: Express): void {
+export function mountMcpRoutes(app: Express, resourceUrl = process.env.MCP_RESOURCE_URL): void {
+  // Preserve the metadata previously served by the frontend reverse proxy.
+  // An empty authorization-server list advertises the existing token-only setup.
+  if (resourceUrl) {
+    const resource = new URL(resourceUrl);
+    if (!['http:', 'https:'].includes(resource.protocol) || resource.pathname !== '/mcp'
+        || resource.username || resource.password || resource.search || resource.hash) {
+      throw new Error('MCP_RESOURCE_URL must be an HTTP(S) /mcp URL without credentials or query');
+    }
+    app.get(['/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/mcp'], (_req, res) => {
+      res.json({ resource: resource.href, authorization_servers: [] });
+    });
+  }
   app.post('/mcp', mcpAuthMiddleware, (req, res) => {
     void handleStreamable(req, res);
   });
